@@ -1,0 +1,109 @@
+<!-- templates/dashboard.html -->
+<!-- Secure dashboard matching vulnapp's UI/UX -->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f2f5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .user-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .role-select {
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            text-decoration: none;
+        }
+
+        .current-role {
+            color: #666;
+            margin-right: 15px;
+        }
+
+        .security-badge {
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e3f2fd;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #1565c0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>User Management Dashboard</h2>
+            <div>
+                <span class="current-role">Your role: {{ current_role }}</span>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </div>
+
+        {% for user in users %}
+        <div class="user-card">
+            <div>
+                <strong>{{ user.username }}</strong>
+                <span>(Current role: {{ user.role }})</span>
+            </div>
+            {% if current_role == 'admin' %}
+            <!-- SECURITY: CSRF token added to form (not in vulnapp) -->
+            <form method="POST" action="{{ url_for('update_role') }}" style="display: inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="user_id" value="{{ user.id }}">
+                <select name="role" class="role-select" onchange="this.form.submit()">
+                    <option value="user" {% if user.role=='user' %}selected{% endif %}>User</option>
+                    <option value="admin" {% if user.role=='admin' %}selected{% endif %}>Admin</option>
+                </select>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <div class="security-badge">
+            🔒 This is the secure version of vulnapp with CSRF protection, authorization checks, and secure password
+            hashing
+        </div>
+    </div>
+</body>
+
+</html>
