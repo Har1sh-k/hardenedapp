@@ -23,6 +23,12 @@ hardenedapp maintains 100% functional parity with vulnapp - same routes, same fe
 - **Secure session configuration** (HttpOnly, SameSite cookies)
 - **Security headers** (CSP, X-Frame-Options, HSTS)
 - **Environment-based secrets** (no hardcoded credentials)
+- **Security logging** with structured audit trail
+- **HTTPS enforcement** in production with automatic redirect
+- **Centralized error handling** preventing information leakage
+- **Database file permissions** (chmod 600)
+- **Optional database encryption** via SQLCipher
+- **Timing attack prevention** on login endpoint
 
 ## Quick Start
 
@@ -170,6 +176,26 @@ pytest tests/test_parity.py -v            # Functional parity tests
 - **vulnapp**: `debug=True` in production → information disclosure
 - **hardenedapp**: Debug mode only in development environment
 
+### 12. **Security Logging**
+- **vulnapp**: No logging → attacks go undetected
+- **hardenedapp**: Structured security logging for auth events, authorization failures, role changes, and profile access
+
+### 13. **HTTPS Enforcement**
+- **vulnapp**: No HTTPS enforcement → credentials sent in plaintext
+- **hardenedapp**: Automatic HTTP→HTTPS redirect in production, secure cookies enforced
+
+### 14. **Error Handling**
+- **vulnapp**: Default Flask errors → stack traces exposed
+- **hardenedapp**: Centralized error handlers (400-500) with generic user messages, detailed server-side logging
+
+### 15. **Timing Attack Prevention**
+- **vulnapp**: Fast response for invalid usernames → username enumeration
+- **hardenedapp**: Constant-time login verification using dummy hash for invalid usernames
+
+### 16. **Database Security**
+- **vulnapp**: World-readable database file
+- **hardenedapp**: File permissions set to 600 (owner-only), optional SQLCipher encryption
+
 ## Parity Checklist
 
 This table verifies feature-by-feature parity with vulnapp:
@@ -202,6 +228,7 @@ hardenedapp/
 ├── app.py                 # Main Flask application
 ├── auth.py                # Authentication and authorization decorators
 ├── database.py            # Database initialization and Argon2 hashing
+├── security_logger.py     # Centralized security logging module
 ├── profile_routes.py      # Profile API blueprint
 ├── validators.py          # Input validation schemas
 ├── requirements.txt       # Python dependencies
@@ -210,6 +237,8 @@ hardenedapp/
 ├── setup.ps1             # Windows setup script
 ├── setup.sh              # Linux/Mac setup script
 ├── pytest.ini            # Pytest configuration
+├── logs/                  # Security logs (auto-created, gitignored)
+│   └── security.log      # Rotating security audit log
 ├── templates/
 │   ├── login.html        # Login page
 │   └── dashboard.html    # User management dashboard
@@ -281,6 +310,9 @@ FLASK_HOST=127.0.0.1
 # Database
 DATABASE_PATH=users.db
 
+# Database Encryption (Optional - requires pysqlcipher3)
+# DB_ENCRYPTION_KEY=<generate-with: python -c "import secrets; print(secrets.token_hex(32))">
+
 # Initial User Passwords (minimum 12 characters)
 ADMIN_PASSWORD=<your-secure-admin-password>
 USER_PASSWORD=<your-secure-user-password>
@@ -288,6 +320,9 @@ USER_PASSWORD=<your-secure-user-password>
 # Security Settings
 COOKIE_SECURE=false  # Set to 'true' in production (requires HTTPS)
 LOGIN_RATE_LIMIT=5 per minute
+
+# Logging
+LOG_DIR=logs
 ```
 
 ## Development vs Production
@@ -297,12 +332,16 @@ LOGIN_RATE_LIMIT=5 per minute
 - Detailed error pages
 - Auto-reload on code changes
 - `COOKIE_SECURE=false` (no HTTPS required)
+- HTTP allowed (no redirect)
 
 **Production** (`FLASK_ENV=production`):
 - Debug mode disabled
-- Generic error pages
-- Set `COOKIE_SECURE=true` (requires HTTPS)
+- Generic error pages (no stack traces)
+- `COOKIE_SECURE=true` enforced automatically
+- HTTP automatically redirects to HTTPS
+- HSTS header enabled with preload
 - Use a production WSGI server (e.g., gunicorn, uwsgi)
+- Security logs written to `logs/security.log`
 
 ## Contributing
 
