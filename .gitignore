@@ -49,3 +49,10 @@ env/
 htmlcov/
 .tox/
 .hypothesis/
+
+# Logs
+logs/
+*.log
+
+# Security Scanner
+.securevibes

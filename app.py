@@ -23,6 +23,10 @@ from auth import login_required, admin_required, verify_user_access
 from validators import LoginSchema, RoleUpdateSchema
 from pydantic import ValidationError
 from dotenv import load_dotenv
+from security_logger import (
+    log_auth_success, log_auth_failure, log_auth_logout,
+    log_role_change, log_rate_limit
+)
 import os
 
 # Load environment variables
@@ -134,8 +138,18 @@ def login():
             session['user_id'] = user['id']
             session['role'] = user['role']
             session.permanent = True  # Use permanent session with timeout
+            log_auth_success(
+                username=credentials.username,
+                ip_address=get_remote_address(),
+                user_agent=request.headers.get('User-Agent')
+            )
             return redirect(url_for('dashboard'))
         
+        log_auth_failure(
+            username=credentials.username,
+            ip_address=get_remote_address(),
+            reason='invalid_credentials'
+        )
         return render_template('login.html', error="Invalid credentials")
     
     return render_template('login.html')
@@ -217,6 +231,13 @@ def update_role():
     )
     db.commit()
     
+    log_role_change(
+        admin_id=session['user_id'],
+        target_user_id=data.user_id,
+        new_role=data.role,
+        ip_address=get_remote_address()
+    )
+    
     return redirect(url_for('dashboard'))
 
 
@@ -226,6 +247,11 @@ def logout():
     Logout endpoint - clear session.
     Maintains same behavior as vulnapp.
     """
+    if 'user_id' in session:
+        log_auth_logout(
+            user_id=session['user_id'],
+            ip_address=get_remote_address()
+        )
     session.clear()
     return redirect(url_for('login'))
 

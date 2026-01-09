@@ -4,7 +4,9 @@ Fixes vulnapp's broken verify_user_access() function and implements proper RBAC.
 """
 
 from functools import wraps
-from flask import session, jsonify, redirect, url_for
+from flask import session, jsonify, redirect, url_for, request
+from flask_limiter.util import get_remote_address
+from security_logger import log_authz_failure
 
 
 def login_required(f):
@@ -53,6 +55,12 @@ def admin_required(f):
             return redirect(url_for('login'))
         
         if 'role' not in session or session['role'] != 'admin':
+            log_authz_failure(
+                user_id=session.get('user_id'),
+                resource=f.__name__,
+                ip_address=get_remote_address(),
+                required_role='admin'
+            )
             # For API routes, return JSON error
             if '/api/' in str(f.__name__) or '/api/' in str(f):
                 return jsonify({"error": "Admin access required"}), 403

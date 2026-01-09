@@ -1,15 +1,24 @@
 """
 Secure database initialization and access layer.
 Uses Argon2id for password hashing (replaces vulnapp's MD5).
+Supports optional SQLCipher encryption for data at rest.
 """
 
 import sqlite3
+import stat
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Try to import SQLCipher for encrypted database support
+try:
+    from pysqlcipher3 import dbapi2 as sqlcipher
+    SQLCIPHER_AVAILABLE = True
+except ImportError:
+    SQLCIPHER_AVAILABLE = False
 
 # Initialize Argon2 password hasher with secure defaults
 ph = PasswordHasher(
@@ -24,13 +33,32 @@ ph = PasswordHasher(
 def get_db():
     """
     Get database connection with row factory for dict-like access.
+    Supports optional encryption via SQLCipher when DB_ENCRYPTION_KEY is set.
     
     Returns:
-        sqlite3.Connection: Database connection
+        sqlite3.Connection: Database connection (encrypted if configured)
     """
     db_path = os.getenv('DATABASE_PATH', 'users.db')
-    db = sqlite3.connect(db_path)
-    db.row_factory = sqlite3.Row
+    encryption_key = os.getenv('DB_ENCRYPTION_KEY')
+    
+    # Use encrypted database if key is provided and SQLCipher is available
+    if encryption_key and SQLCIPHER_AVAILABLE:
+        db = sqlcipher.connect(db_path)
+        db.row_factory = sqlcipher.Row
+        # Set encryption key (PRAGMA key must be first command)
+        db.execute(f"PRAGMA key = '{encryption_key}'")
+        # Use SQLCipher 4 defaults
+        db.execute("PRAGMA cipher_compatibility = 4")
+    elif encryption_key and not SQLCIPHER_AVAILABLE:
+        print("WARNING: DB_ENCRYPTION_KEY is set but pysqlcipher3 is not installed.")
+        print("         Install with: pip install pysqlcipher3")
+        print("         Database will be unencrypted!")
+        db = sqlite3.connect(db_path)
+        db.row_factory = sqlite3.Row
+    else:
+        db = sqlite3.connect(db_path)
+        db.row_factory = sqlite3.Row
+    
     return db
 
 
@@ -129,3 +157,20 @@ def init_db():
         print("✓ Database already initialized")
     
     db.close()
+    
+    # Set restrictive file permissions on database (owner read/write only)
+    db_path = os.getenv('DATABASE_PATH', 'users.db')
+    if os.path.exists(db_path):
+        try:
+            # Set permissions to 600 (owner read/write only)
+            os.chmod(db_path, stat.S_IRUSR | stat.S_IWUSR)
+            print(f"✓ Database file permissions set to 600: {db_path}")
+        except OSError as e:
+            # On Windows, chmod may not work the same way
+            print(f"Note: Could not set file permissions on {db_path}: {e}")
+    
+    # Warn if encryption is not configured for production
+    encryption_key = os.getenv('DB_ENCRYPTION_KEY')
+    if not encryption_key and os.getenv('FLASK_ENV') == 'production':
+        print("⚠️  WARNING: DB_ENCRYPTION_KEY is not set in production!")
+        print("   Database file is stored unencrypted. Set DB_ENCRYPTION_KEY for encryption at rest.")
