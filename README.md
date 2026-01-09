@@ -313,9 +313,13 @@ This project is designed as a reference implementation of secure web application
 4. Test all authorization logic
 5. Keep dependencies updated
 
+## Acknowledgements
+
+This project is based on [vulnapp](https://github.com/anshumanbh/vulnapp) by [Anshuman Bhartiya](https://github.com/anshumanbh). The original vulnapp is an intentionally vulnerable application designed for security training. hardenedapp serves as its secure counterpart, demonstrating how to fix the vulnerabilities while maintaining functional parity.
+
 ## License
 
-This project is provided for educational purposes to demonstrate secure coding practices.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
