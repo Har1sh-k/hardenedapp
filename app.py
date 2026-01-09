@@ -25,9 +25,10 @@ from pydantic import ValidationError
 from dotenv import load_dotenv
 from security_logger import (
     log_auth_success, log_auth_failure, log_auth_logout,
-    log_role_change, log_rate_limit
+    log_role_change, log_rate_limit, log_security_event
 )
 import os
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -46,8 +47,11 @@ if not app.secret_key or app.secret_key == 'CHANGEME_GENERATE_RANDOM_SECRET_KEY_
 # SECURITY: Secure session configuration
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-# Enable secure cookies in production (requires HTTPS)
-app.config['SESSION_COOKIE_SECURE'] = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
+# VULN-004 FIX: Force secure cookies in production, configurable in development
+if os.getenv('FLASK_ENV') == 'production':
+    app.config['SESSION_COOKIE_SECURE'] = True
+else:
+    app.config['SESSION_COOKIE_SECURE'] = os.getenv('COOKIE_SECURE', 'false').lower() == 'true'
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
 
 # SECURITY: CSRF Protection
@@ -65,6 +69,17 @@ limiter = Limiter(
 
 # Register blueprints
 app.register_blueprint(profile)
+
+
+# VULN-004 FIX: HTTP to HTTPS redirect in production
+@app.before_request
+def redirect_to_https():
+    """Redirect HTTP requests to HTTPS in production."""
+    if os.getenv('FLASK_ENV') == 'production':
+        # Check if request is not secure (handles both direct and proxy scenarios)
+        if not request.is_secure and request.headers.get('X-Forwarded-Proto', 'http') != 'https':
+            url = request.url.replace('http://', 'https://', 1)
+            return redirect(url, code=301)
 
 
 # SECURITY: Security headers middleware
@@ -89,9 +104,78 @@ def set_security_headers(response):
     response.headers['X-XSS-Protection'] = '1; mode=block'
     # Strict Transport Security (HTTPS enforcement in production)
     if app.config['SESSION_COOKIE_SECURE']:
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
     
     return response
+
+
+# VULN-005 FIX: Centralized error handlers
+@app.errorhandler(400)
+def bad_request(e):
+    """Handle 400 Bad Request errors."""
+    log_security_event('HTTP_400', f'path={request.path} ip={get_remote_address()}', 'WARNING')
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Bad request'}), 400
+    return render_template('login.html', error='Bad request'), 400
+
+
+@app.errorhandler(401)
+def unauthorized(e):
+    """Handle 401 Unauthorized errors."""
+    log_security_event('HTTP_401', f'path={request.path} ip={get_remote_address()}', 'WARNING')
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Authentication required'}), 401
+    return redirect(url_for('login'))
+
+
+@app.errorhandler(403)
+def forbidden(e):
+    """Handle 403 Forbidden errors."""
+    log_security_event('HTTP_403', f'path={request.path} ip={get_remote_address()} user_id={session.get("user_id")}', 'WARNING')
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Access forbidden'}), 403
+    return jsonify({'error': 'Access forbidden'}), 403
+
+
+@app.errorhandler(404)
+def not_found(e):
+    """Handle 404 Not Found errors."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Resource not found'}), 404
+    return render_template('login.html', error='Page not found'), 404
+
+
+@app.errorhandler(429)
+def rate_limit_exceeded(e):
+    """Handle 429 Too Many Requests (rate limiting)."""
+    log_rate_limit(ip_address=get_remote_address(), endpoint=request.path)
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Too many requests. Please try again later.'}), 429
+    return render_template('login.html', error='Too many attempts. Please wait before trying again.'), 429
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    """Handle 500 Internal Server errors."""
+    log_security_event('HTTP_500', f'path={request.path} error={str(e)} ip={get_remote_address()}', 'ERROR')
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    return render_template('login.html', error='An unexpected error occurred'), 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Global exception handler - catch all unhandled exceptions."""
+    # Log full traceback server-side
+    log_security_event(
+        'UNHANDLED_EXCEPTION',
+        f'path={request.path} error={str(e)} ip={get_remote_address()}\n{traceback.format_exc()}',
+        'ERROR'
+    )
+    # Return generic message to user (no sensitive details)
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    return render_template('login.html', error='An unexpected error occurred'), 500
 
 
 @app.route('/')
