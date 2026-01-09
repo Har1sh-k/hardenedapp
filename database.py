@@ -29,6 +29,11 @@ ph = PasswordHasher(
     salt_len=16          # Length of the salt in bytes
 )
 
+# VULN-009 FIX: Dummy hash for constant-time login verification
+# This hash is used when username doesn't exist to prevent timing attacks
+# Pre-computed Argon2id hash of a random string (never matches any real password)
+DUMMY_PASSWORD_HASH = ph.hash("__dummy_password_that_never_matches_anything__")
+
 
 def get_db():
     """

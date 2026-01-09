@@ -18,7 +18,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from profile_routes import profile
-from database import init_db, get_db, verify_password
+from database import init_db, get_db, verify_password, DUMMY_PASSWORD_HASH
 from auth import login_required, admin_required, verify_user_access
 from validators import LoginSchema, RoleUpdateSchema
 from pydantic import ValidationError
@@ -216,9 +216,13 @@ def login():
             'SELECT * FROM users WHERE username = ?', (credentials.username,)
         ).fetchone()
         
-        # SECURITY: Use constant-time comparison via Argon2 verify
-        # Generic error message prevents username enumeration
-        if user and verify_password(user['password'], credentials.password):
+        # VULN-009 FIX: Always verify password to prevent timing attacks
+        # Use real hash if user exists, dummy hash if not (constant-time)
+        password_hash = user['password'] if user else DUMMY_PASSWORD_HASH
+        password_valid = verify_password(password_hash, credentials.password)
+        
+        # Only succeed if BOTH user exists AND password is valid
+        if user and password_valid:
             session['user_id'] = user['id']
             session['role'] = user['role']
             session.permanent = True  # Use permanent session with timeout
