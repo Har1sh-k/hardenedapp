@@ -43,6 +43,12 @@ if not app.secret_key or app.secret_key == 'CHANGEME_GENERATE_RANDOM_SECRET_KEY_
         "SECRET_KEY must be set to a secure random value in .env file. "
         "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
     )
+# V004 FIX: Enforce minimum SECRET_KEY length
+if len(app.secret_key) < 64:
+    raise ValueError(
+        "SECRET_KEY must be at least 64 characters long. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
 
 # SECURITY: Secure session configuration
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -223,6 +229,8 @@ def login():
         
         # Only succeed if BOTH user exists AND password is valid
         if user and password_valid:
+            # V002 FIX: Regenerate session to prevent session fixation
+            session.clear()
             session['user_id'] = user['id']
             session['role'] = user['role']
             session.permanent = True  # Use permanent session with timeout
@@ -311,6 +319,10 @@ def update_role():
         )
     except (ValidationError, ValueError) as e:
         return jsonify({"error": "Invalid input"}), 400
+    
+    # V015 FIX: Prevent admin from modifying their own role
+    if data.user_id == session['user_id']:
+        return jsonify({"error": "Cannot modify your own role"}), 403
     
     db = get_db()
     db.execute(

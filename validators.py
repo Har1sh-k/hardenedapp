@@ -3,12 +3,15 @@ Input validation schemas for secure data handling.
 All user inputs must pass through these validators.
 """
 
-from pydantic import BaseModel, Field, field_validator, EmailStr
+from pydantic import BaseModel, Field, field_validator, EmailStr, ConfigDict
 import re
 
 
 class LoginSchema(BaseModel):
     """Validate login credentials."""
+    # V006 FIX: Forbid extra fields to prevent mass assignment
+    model_config = ConfigDict(extra='forbid')
+    
     username: str = Field(..., min_length=1, max_length=50)
     password: str = Field(..., min_length=1, max_length=128)
     
@@ -23,6 +26,9 @@ class LoginSchema(BaseModel):
 
 class ProfileUpdateSchema(BaseModel):
     """Validate profile update data."""
+    # V006 FIX: Forbid extra fields to prevent mass assignment
+    model_config = ConfigDict(extra='forbid')
+    
     email: EmailStr = Field(..., max_length=100)
     phone: str = Field(..., max_length=20)
     address: str = Field(..., max_length=200)
@@ -50,6 +56,9 @@ class ProfileUpdateSchema(BaseModel):
 
 class RoleUpdateSchema(BaseModel):
     """Validate role update requests."""
+    # V006 FIX: Forbid extra fields to prevent mass assignment
+    model_config = ConfigDict(extra='forbid')
+    
     user_id: int = Field(..., gt=0)
     role: str = Field(..., min_length=1, max_length=20)
     
